@@ -13,6 +13,7 @@ using std::string;
 using std::regex;
 using std::smatch;
 
-int parse_uri(const char* uri, string[]);
+int parse_new(const char* uri, string[], int *);
+//int parse_uri(const char* uri, string[]);
 int name_or_ipaddr(string, int* , string &);
 #endif //LABGET_URI_H

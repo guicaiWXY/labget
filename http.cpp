@@ -7,11 +7,15 @@
 #include "http.h"
 
 void show_buffer(char *recv, unsigned int len) {
+    log();
     log("receive ");
     log(len);
+    log();
     if (len < RECV_SIZE) {
+        char x = recv[len+1];
         recv[len+1] = 0;
-        out(recv);
+        log(recv);
+        recv[len+1] = x;
     }
 }
 void fill_buffer(char *buf_ptr, std::string str) {
@@ -21,16 +25,7 @@ void fill_buffer(char *buf_ptr, std::string str) {
     }
     const char *cstr = str.c_str();
     memcpy(buf_ptr, cstr, len);
-//    *buf_ptr += len;
 }
-//void buffer_end_line() {
-//
-//}
-//
-//#define END_LINE    \
-//    *(s_b++) = 0x0d;    \
-//    *(s_b++) = 0x0a;
-
 
 /*
  * Return a string of content user required
@@ -43,7 +38,7 @@ char *send_request(std::string host, std::string request, int *ip_and_port, int 
     struct sockaddr_in client_addr;
     struct hostent *server;
     const char *hostname = host.c_str();
-    char recv_buf[RECV_SIZE];
+    char recv_buf[(RECV_SIZE+2)*64];
     char send_buf[BUFFER_SIZE];
 
     // TCP
@@ -66,7 +61,6 @@ char *send_request(std::string host, std::string request, int *ip_and_port, int 
             return NULL;
         }
         bzero(send_buf, BUFFER_SIZE);
-//        char *s_b = send_buf;
         std::string head;
         if (request.find("/") == 0)
             head = "GET " + request + " HTTP/1.1\r\n";
@@ -88,13 +82,25 @@ char *send_request(std::string host, std::string request, int *ip_and_port, int 
             log("Error when reading from socket.\n");
         }
 
-        while ((n = read(sockfd, recv_buf, RECV_SIZE)) != 0) {
-            show_buffer(recv_buf, n);
-            out();
+        unsigned long sum = 0;
+        while (true) {
+            n = read(sockfd, recv_buf+sum, RECV_SIZE);
+            if (n == 0 | n == -1)
+                break;
+            log("read " );
+            log(n);
+            log();
+//            show_buffer(recv_buf + sum, n);
+            sum += n;
+            if (sum > RECV_BUFFER_SIZE) {
+                log("Buffer Overflow.");
+                break;
+            }
         }
+
         close(sockfd);
         log("\ncontent ends.\n");
-
+        show_buffer(recv_buf, sum);
     } else {
 
 

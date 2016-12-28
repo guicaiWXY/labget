@@ -15,6 +15,7 @@
 
 #define BUFFER_SIZE 2048
 #define RECV_SIZE 65534
+#define RECV_BUFFER_SIZE (65536*64)
 
 const int IPV4 = 1;
 const int IPV6 = 0;

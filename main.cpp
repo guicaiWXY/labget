@@ -6,30 +6,27 @@ bool using_TLS = false;
 extern const int IPV4;
 extern const int IPV6;
 
-void print_parsed_info(int *addr, string auth) {
-    int i = 0;
-    log("ip addr is: ");
-    for (; i < 4; i++) {
-        log(addr[i]);
-        log(" ");
-    }
-    log();
-    log("Port num is: ");
-    log(addr[4]);
-    log();
-    log("Auth is: " + auth + "\n");
-}
-
 void print_v4_addr(unsigned int *addr_ptr) {
     unsigned int addr = *addr_ptr;
     fprintf(stderr, "Address is : %d.%d.%d.%d\n", (addr >> 0) & 0xff,
             (addr >> 8) & 0xff, (addr >> 16) & 0xff, (addr >> 24) & 0xff);
 }
 
+void test_uri() {
+    int status;
+//    int status = curl("http://www.sina.com.cn");
+//    status = curl("http://www.sjtu.edu.cn");
+    status = curl("http://www.fudan.edu.cn/2016/index.html");
+}
+
 /*
  * Should always exit with status code 0
  * */
 int main(int argc, char **args) {
+    test_uri();
+    exit(0);
+
+
 //    if (argc != 1) {
 //        std::cout << "Please include a desired url." << std::endl;
 //    }
@@ -118,8 +115,10 @@ int curl(const char *uri) {
     /*
     * Step 1: parsing URI
     * */
-    string segments[10];
-    int correct = parse_uri(uri, segments);
+    string segments[3];
+    int port;
+//    int correct = parse_uri(uri, segments);
+    int correct = parse_new(uri, segments, &port);
     if (!correct) {
         // throw an exception
         log(string("Wrong uri format, system exits.\n"));
@@ -131,48 +130,37 @@ int curl(const char *uri) {
         using_TLS = true;
         out(string("HTTPS used.\n"));
     }
-    int *addr = (int *) malloc(sizeof(int) * 5);
-    string auth;
-    int status = name_or_ipaddr(segments[4], addr, auth);
-    print_parsed_info(addr, auth);
-
 
     /*
      * Step 2: DNS transfer
      * */
-    if (status == -1)
-        return -1;
-    int *ip_addr = addr;
-    if (status == 0) {
-        if (using_ipv6) {
-            ip_addr = dns_look_up_v6(auth, addr[4]);
-            if (ip_addr == 0) {
-                log("DNS transfer fails.");
-                log();
-            }
-        } else {
-            if (ip_addr = dns_look_up(auth, addr[4])) {
-                log("DNS transfer fails.");
-                log();
-            }
+    int *ip_addr ;
+    if (using_ipv6) {
+        ip_addr = dns_look_up_v6(segments[1], port);
+        if (ip_addr == 0) {
+            log("DNS transfer fails.");
+            log();
+        }
+    } else {
+        ip_addr = dns_look_up(segments[1], port);
+        if (ip_addr == 0) {
+            log("DNS transfer fails.");
+            log();
+            return -1;
         }
     }
 
     /*
-     * Step 3: Generate HTTP request
+     * Step 3: Send HTTP request
      * */
-
-
-
-    /*
-     * Step 4: Send request
-     * */
+    int ip_port[2];
+    ip_port[0] = *ip_addr;
+    ip_port[1] = port;
     if (using_TLS) {
 
     } else {
-
+        send_request(segments[1], segments[2], ip_port, IPV4);
     }
-
 
     /*
      * Step 5: Show response
@@ -182,7 +170,7 @@ int curl(const char *uri) {
     /*
      * clean up stage
      * */
-    free(addr);
+//    free(ip_addr);
 }
 
 
@@ -204,3 +192,16 @@ int curl(const char *uri) {
 //    print_parsed_info(addr, auth);
 //    log(name_or_ipaddr("mail.fudan.edu.cn:8080abcd", addr, auth));
 //    log();
+//void print_parsed_info(int *addr, string auth) {
+//    int i = 0;
+//    log("ip addr is: ");
+//    for (; i < 4; i++) {
+//        log(addr[i]);
+//        log(" ");
+//    }
+//    log();
+//    log("Port num is: ");
+//    log(addr[4]);
+//    log();
+//    log("Auth is: " + auth + "\n");
+//}

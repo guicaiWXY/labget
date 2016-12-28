@@ -372,7 +372,6 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
         // TODO
     }
 
-
     delete send_buffer;
     delete rec_buffer;
 
