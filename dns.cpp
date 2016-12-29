@@ -30,8 +30,6 @@
 #define GET_KLASS get_word_from_buffer(&r_b, &klass)
 #define GET_TTL get_int_from_buffer(&r_b, &ttl)
 #define GET_DATA_LENGTH get_word_from_buffer(&r_b, &data_length)
-//#define GET_DATA str
-
 
 #define get_word_from_buffer(buffer_ptr, int_ptr)   \
     *(int_ptr) = GET_WORD1((*(buffer_ptr)));        \

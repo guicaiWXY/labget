@@ -6,16 +6,22 @@
 #include <cstring>
 #include "http.h"
 
-void show_buffer(char *recv, unsigned int len) {
+void show_content(char *recv, unsigned long len) {
+    for (unsigned long i = 0; i<len; i++) {
+        fprintf(stderr, "%c", recv[i]);
+    }
+    log();
+}
+void show_buffer(char *recv, unsigned long len) {
     log();
     log("receive ");
     log(len);
     log();
     if (len < RECV_SIZE) {
         char x = recv[len+1];
-        recv[len+1] = 0;
+        recv[len] = 0;
         log(recv);
-        recv[len+1] = x;
+        recv[len] = x;
     }
 }
 void fill_buffer(char *buf_ptr, std::string str) {
@@ -26,11 +32,25 @@ void fill_buffer(char *buf_ptr, std::string str) {
     const char *cstr = str.c_str();
     memcpy(buf_ptr, cstr, len);
 }
+void split_string(const std::string & s, std::vector<std::string> & v, const std::string c) {
+    std::string::size_type pos1, pos2;
+    pos2 = s.find(c);
+    pos1 = 0;
+    int c_size = c.size();
+    while (std::string::npos != pos2) {
+        v.push_back(s.substr(pos1, pos2-pos1));
+
+        pos1 = pos2 + c_size;
+        pos2 = s.find(c,pos1);
+    }
+    if (pos1 != s.length())
+        v.push_back(s.substr(pos1));
+}
 
 /*
- * Return a string of content user required
+ * Return header and content content user required
  * */
-char *send_request(std::string host, std::string request, int *ip_and_port, int version) {
+RESPONSE send_request(std::string host, std::string request, int *ip_and_port, int version) {
     int sockfd;
     unsigned int portno, n;
     portno = version == IPV4 ? ip_and_port[1] : ip_and_port[4];
@@ -38,7 +58,7 @@ char *send_request(std::string host, std::string request, int *ip_and_port, int 
     struct sockaddr_in client_addr;
     struct hostent *server;
     const char *hostname = host.c_str();
-    char recv_buf[(RECV_SIZE+2)*64];
+    char* recv_buf = (char *)malloc(sizeof(char)*RECV_BUFFER_SIZE);
     char send_buf[BUFFER_SIZE];
 
     // TCP
@@ -79,39 +99,130 @@ char *send_request(std::string host, std::string request, int *ip_and_port, int 
 
         n = write(sockfd, send_buf, head.length());
         if (n < 0) {
-            log("Error when reading from socket.\n");
+            log("Error when sending http request.\n");
+            return NULL;
         }
 
         unsigned long sum = 0;
+        char head_buf[BUFFER_SIZE];
+        n = read(sockfd, head_buf, BUFFER_SIZE);
+        if (n == 0-1 | n == 0)
+        {
+            log("Empty Head.\n");
+            return NULL;
+        }
+//        show_buffer(head_buf, n);
+
+        unsigned long tmp;
+        sum = 0;
         while (true) {
-            n = read(sockfd, recv_buf+sum, RECV_SIZE);
-            if (n == 0 | n == -1)
+//            n = read(sockfd, recv_buf+sum, RECV_SIZE);
+            tmp = read(sockfd, recv_buf+sum, RECV_BUFFER_SIZE);
+            if (tmp == 0 | tmp == 0-1)
                 break;
-            log("read " );
-            log(n);
-            log();
+            log(tmp);
+            log(" ");
 //            show_buffer(recv_buf + sum, n);
-            sum += n;
+            sum += tmp;
             if (sum > RECV_BUFFER_SIZE) {
                 log("Buffer Overflow.");
                 break;
             }
         }
+        if (sum == 0 | sum == 0-1) {
+            log("Empty Content.\n");
+            return NULL;
+        }
+
+//        show_content(recv_buf, sum);
+        SIZED_BUF response_header = {
+                head_buf, n
+        };
+        SIZED_BUF response_content = {
+                recv_buf, sum
+        };
+
+        RESPONSE response = (RESPONSE)malloc(sizeof(struct response));
+        response->header = response_header;
+        response->content = response_content;
 
         close(sockfd);
         log("\ncontent ends.\n");
-        show_buffer(recv_buf, sum);
+        return response;
     } else {
-
+        // IPV6
 
     }
 }
 
-char *send_request_tls(std::string host, std::string request, int *ip_and_port, int version) {
+RESPONSE send_request_tls(std::string host, std::string request, int *ip_and_port, int version) {
 
 }
 
+//void parse_header(RESPONSE response) {
+//
+//}
 
+void show_header(std::vector<std::string> lines) {
+    out("Http Response:\n");
+    out("First line is: " + lines[0] + "\n");
+    out("Headers are:\n");
+    int end = lines.size()-1;
+    for (int i=1; i < end; i++) {
+        out(lines[i]);
+        out();
+    }
+}
+
+int get_port(std::string);  // in uri.cpp
+int get_status_code(RESPONSE response, std::vector<std::string> &lines) {
+    char * header = response->header.buffer;
+    header[response->header.size] = 0;
+    std::string head = std::string(header);
+//    std::vector<std::string> lines;
+    split_string(head, lines, "\r\n");
+    log(lines.at(lines.size()-1));
+    show_header(lines);
+    std::vector<std::string> codes;
+    split_string(lines[0], codes, " ");
+    if (codes[0].compare("HTTP/1.1")) {
+        log("Wrong HTTP response version:" + codes[0]);
+        return -1;
+    }
+    int status = get_port(codes[1]);
+    return status;
+}
+
+void decompress(SIZED_BUF & entity, std::vector<std::string> lines) {
+    int len = lines.size();
+    std::string enc = "Content-Encoding: ";
+    int index = 0;
+
+    for (int i = 1; i < len-1; i++) {
+        if (lines[i].find_first_of(enc, 0) == 0) {
+            index = i;
+            break;
+        }
+    }
+    if (index > 0) {
+        std::string encode = lines[index].substr(enc.length());
+        if (!encode.compare("gzip")) {
+            // encoding with gzip
+            Byte *buf = (Byte*)malloc(sizeof(char)*RECV_SIZE * 16);
+            unsigned long size;
+            if (gzdecompress((Byte *)entity.buffer, entity.size, buf, &size) == 0) {
+                log(size);
+            }
+            else {
+                log("GZ decompress failed.\n");
+            };
+        } else {
+            // plain text
+        }
+    } else {
+        return;
+    }
+}
 
 
 //#define BUFSIZE 1024
@@ -181,3 +292,4 @@ char *send_request_tls(std::string host, std::string request, int *ip_and_port, 
 //    close(sockfd);
 //    return 0;
 //}
+

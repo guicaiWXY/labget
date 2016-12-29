@@ -14,11 +14,14 @@
 #include "uri.h"
 #include "io.h"
 #include "http.h"
+//#include "gzip.h"
 //#include ""
 
 // MACROs
 
 //using namespace std;
+
+
 
 // global variables
 const char* DNS_SERVER_ADDRESS = "202.120.224.26";

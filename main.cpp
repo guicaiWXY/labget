@@ -14,9 +14,138 @@ void print_v4_addr(unsigned int *addr_ptr) {
 
 void test_uri() {
     int status;
-//    int status = curl("http://www.sina.com.cn");
+    status = curl("http://www.sina.com.cn");
 //    status = curl("http://www.sjtu.edu.cn");
-    status = curl("http://www.fudan.edu.cn/2016/index.html");
+//    status = curl("http://www.fudan.edu.cn/2016/index.html");
+}
+
+
+
+//void test() {
+//    std::string s("this subject has a submarine as a subsequence");
+//    std::smatch m;
+//    std::regex e("\\b(sub)([^ ]*)");   // matches words beginning by "sub"
+//
+//    std::cout << "Target sequence: " << s << std::endl;
+//    std::cout << "Regular expression: /\\b(sub)([^ ]*)/" << std::endl;
+//    std::cout << "The following matches and submatches were found:" << std::endl;
+//
+//    while (std::regex_search(s, m, e)) {
+//        for (auto x = m.begin(); x != m.end(); x++)
+//            std::cout << x->str() << " ";
+//        out(m.begin()->str());
+//        std::cout << "--> ([^ ]*) match " << m.format("$2") << std::endl;
+//        s = m.suffix().str();
+//    }
+//}
+
+int curl(const char *uri) {
+    /*
+    * Step 1: parsing URI
+    * */
+    string segments[3];
+    int port;
+//    int correct = parse_uri(uri, segments);
+    int correct = parse_new(uri, segments, &port);
+    if (!correct) {
+        // throw an exception
+        log(string("Wrong uri format, system exits.\n"));
+        return -1;
+    }
+    if (correct == 1) {
+        out(string("HTTP used.\n"));
+    } else if (correct == 2) {
+        using_TLS = true;
+        out(string("HTTPS used.\n"));
+    }
+
+    /*
+     * Step 2: DNS transfer
+     * */
+    int *ip_addr ;
+    if (using_ipv6) {
+        ip_addr = dns_look_up_v6(segments[1], port);
+        if (ip_addr == 0) {
+            log("DNS transfer fails.");
+            log();
+        }
+    } else {
+        ip_addr = dns_look_up(segments[1], port);
+        if (ip_addr == 0) {
+            log("DNS transfer fails.");
+            log();
+            return -1;
+        }
+    }
+
+    /*
+     * Step 3: Send HTTP request
+     * */
+    int ip_port[2];
+    ip_port[0] = *ip_addr;
+    ip_port[1] = port;
+    RESPONSE response;
+
+    if (using_TLS) {
+
+    } else {
+        response = send_request(segments[1], segments[2], ip_port, IPV4);
+    }
+    if (response == NULL) {
+        log("Get HTTP response error.\n");
+        return -1;
+    }
+
+    /*
+     * Step 4: parsing response
+     * */
+    std::vector<std::string> lines;
+    int status = get_status_code(response, lines );
+    if (status < 0) {
+        log("Wrong status code: ");
+        log(status);
+        log();
+        return -1;
+    }
+    switch (status) {
+        // 2xx ok
+        case 200:
+            // OK
+            break;
+        // 3xx redirect
+        case 301:
+            // moved permanently
+            break;
+        case 302:
+            // moved temporarily
+            break;
+        // 4xx client error
+        case 400:
+            // bad request
+            break;
+        case 404:
+            //
+            break;
+        // 5xx server error
+        case 500:
+            //
+            break;
+
+
+        default:
+            log("Unsupported Status code.\n");
+            break;
+    }
+
+    /*
+     * Step 5: Show response
+     * */
+
+
+    /*
+     * clean up stage
+     * */
+//    free(ip_addr);
 }
 
 /*
@@ -92,88 +221,6 @@ int main(int argc, char **args) {
 
     exit(0);
 }
-
-//void test() {
-//    std::string s("this subject has a submarine as a subsequence");
-//    std::smatch m;
-//    std::regex e("\\b(sub)([^ ]*)");   // matches words beginning by "sub"
-//
-//    std::cout << "Target sequence: " << s << std::endl;
-//    std::cout << "Regular expression: /\\b(sub)([^ ]*)/" << std::endl;
-//    std::cout << "The following matches and submatches were found:" << std::endl;
-//
-//    while (std::regex_search(s, m, e)) {
-//        for (auto x = m.begin(); x != m.end(); x++)
-//            std::cout << x->str() << " ";
-//        out(m.begin()->str());
-//        std::cout << "--> ([^ ]*) match " << m.format("$2") << std::endl;
-//        s = m.suffix().str();
-//    }
-//}
-
-int curl(const char *uri) {
-    /*
-    * Step 1: parsing URI
-    * */
-    string segments[3];
-    int port;
-//    int correct = parse_uri(uri, segments);
-    int correct = parse_new(uri, segments, &port);
-    if (!correct) {
-        // throw an exception
-        log(string("Wrong uri format, system exits.\n"));
-        return -1;
-    }
-    if (correct == 1) {
-        out(string("HTTP used.\n"));
-    } else if (correct == 2) {
-        using_TLS = true;
-        out(string("HTTPS used.\n"));
-    }
-
-    /*
-     * Step 2: DNS transfer
-     * */
-    int *ip_addr ;
-    if (using_ipv6) {
-        ip_addr = dns_look_up_v6(segments[1], port);
-        if (ip_addr == 0) {
-            log("DNS transfer fails.");
-            log();
-        }
-    } else {
-        ip_addr = dns_look_up(segments[1], port);
-        if (ip_addr == 0) {
-            log("DNS transfer fails.");
-            log();
-            return -1;
-        }
-    }
-
-    /*
-     * Step 3: Send HTTP request
-     * */
-    int ip_port[2];
-    ip_port[0] = *ip_addr;
-    ip_port[1] = port;
-    if (using_TLS) {
-
-    } else {
-        send_request(segments[1], segments[2], ip_port, IPV4);
-    }
-
-    /*
-     * Step 5: Show response
-     * */
-
-
-    /*
-     * clean up stage
-     * */
-//    free(ip_addr);
-}
-
-
 //    print_parsed_info(addr, auth);
 //    log(name_or_ipaddr("10.11.11.11:1234", addr, auth));
 //    log();
