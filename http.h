@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <vector>
+#include <algorithm>
 
 #define BUFFER_SIZE 2048
 #define RECV_SIZE 65534
@@ -37,5 +38,7 @@ typedef struct response * RESPONSE;
 RESPONSE send_request(std::string, std::string, int*, int);
 RESPONSE send_request_tls(std::string, std::string, int *, int);
 int get_status_code(RESPONSE, std::vector<std::string> & lines);
+void decompress(SIZED_BUF & entity, std::vector<std::string> lines);
+void show_content(char *, unsigned long);
 
 #endif //LABGET_HTTP_H

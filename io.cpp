@@ -13,6 +13,12 @@ void log(char *s) {
 void log(int x) {
     fprintf(stderr, "%d", x);
 }
+void log(long x) {
+    fprintf(stderr, "%ld", x);
+}
+void log(unsigned long x) {
+    fprintf(stderr, "%ld", x);
+}
 void log(void) {
     fprintf(stderr, "\n");
 }

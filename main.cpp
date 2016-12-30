@@ -13,10 +13,12 @@ void print_v4_addr(unsigned int *addr_ptr) {
 }
 
 void test_uri() {
+//    using_ipv6 = true;
     int status;
-    status = curl("http://www.sina.com.cn");
+//    status = curl("http://www.sina.com.cn");
 //    status = curl("http://www.sjtu.edu.cn");
 //    status = curl("http://www.fudan.edu.cn/2016/index.html");
+    status = curl("http://xiami.com");
 }
 
 
@@ -53,10 +55,10 @@ int curl(const char *uri) {
         return -1;
     }
     if (correct == 1) {
-        out(string("HTTP used.\n"));
+//        out(string("HTTP used.\n"));
     } else if (correct == 2) {
         using_TLS = true;
-        out(string("HTTPS used.\n"));
+//        out(string("HTTPS used.\n"));
     }
 
     /*
@@ -111,6 +113,7 @@ int curl(const char *uri) {
         // 2xx ok
         case 200:
             // OK
+            decompress(response->content, lines);
             break;
         // 3xx redirect
         case 301:
@@ -140,7 +143,7 @@ int curl(const char *uri) {
     /*
      * Step 5: Show response
      * */
-
+    show_content(response->content.buffer, response->content.size);
 
     /*
      * clean up stage
@@ -152,32 +155,18 @@ int curl(const char *uri) {
  * Should always exit with status code 0
  * */
 int main(int argc, char **args) {
-    test_uri();
-    exit(0);
+//    test_uri();
+//    exit(0);
 
 
-//    if (argc != 1) {
-//        std::cout << "Please include a desired url." << std::endl;
-//    }
-//    curl(args[0]);
+    if (argc != 2) {
+        std::cout << "Please include a desired url." << std::endl;
+    }
 
     /*
      * Some test code
      * */
-    string auth = "www.zhihu.com.cn";
-//    int tmp_find = -1;
-//    for (int i=0; i<5; i++) {
-//        log("before find x = ");
-//        log( tmp_find );
-//        log();
-//        tmp_find = auth.find('.', tmp_find+1);
-//        log("afer find x = ");
-//        log(auth.substr(0,tmp_find));
-//        log(tmp_find);
-//        log();
-//        log();
-//    }
-//    log((int)sizeof(short));
+//    string auth = "www.zhihu.com.cn";
 
 //    char *rec_buffer = (char *)malloc(sizeof(char) * 10);
 //    rec_buffer[4] = 0x01;
@@ -195,29 +184,29 @@ int main(int argc, char **args) {
 
     using_TLS = false;
     using_ipv6 = false;
-    unsigned int *ipv4_addr_ptr;
-//    ipv4_addr_ptr = dns_look_up("zhihu.com", 80);
-//    print_v4_addr(ipv4_addr_ptr);
-    int ip_port[5];
-//    ip_port[0] = *ipv4_addr_ptr;
-    ip_port[1] = 80;
-//    send_request("zhihu.com", "/index.html", ip_port, IPV4);
+//    unsigned int *ipv4_addr_ptr;
+////    ipv4_addr_ptr = dns_look_up("zhihu.com", 80);
+////    print_v4_addr(ipv4_addr_ptr);
+//    int ip_port[5];
+////    ip_port[0] = *ipv4_addr_ptr;
+//    ip_port[1] = 80;
+////    send_request("zhihu.com", "/index.html", ip_port, IPV4);
+//
+////    ipv4_addr_ptr = (unsigned int*)dns_look_up("www.sjtu.edu.cn", 80);
+////    unsigned int addr = -285162887;
+//    unsigned int addr = 1996650698;
+//
+////    print_v4_addr(&addr);
+////    print_v4_addr(ipv4_addr_ptr);
+////    ip_port[0] = *ipv4_addr_ptr;
+//    ip_port[0] = addr;
+////    send_request("www.sina.com.cn", "/", ip_port, IPV4);
+//    send_request("www.sjtu.edu.cn", "/", ip_port, IPV4);
 
-//    ipv4_addr_ptr = (unsigned int*)dns_look_up("www.sjtu.edu.cn", 80);
-//    unsigned int addr = -285162887;
-    unsigned int addr = 1996650698;
 
-//    print_v4_addr(&addr);
-//    print_v4_addr(ipv4_addr_ptr);
-//    ip_port[0] = *ipv4_addr_ptr;
-    ip_port[0] = addr;
-//    send_request("www.sina.com.cn", "/", ip_port, IPV4);
-    send_request("www.sjtu.edu.cn", "/", ip_port, IPV4);
-
-
-//    if (curl("https://zhihu.com") == -1) {
-//        exit(0);
-//    }
+    if (curl(args[1]) == -1) {
+        exit(0);
+    }
 
     exit(0);
 }
@@ -252,3 +241,16 @@ int main(int argc, char **args) {
 //    log();
 //    log("Auth is: " + auth + "\n");
 //}
+//    int tmp_find = -1;
+//    for (int i=0; i<5; i++) {
+//        log("before find x = ");
+//        log( tmp_find );
+//        log();
+//        tmp_find = auth.find('.', tmp_find+1);
+//        log("afer find x = ");
+//        log(auth.substr(0,tmp_find));
+//        log(tmp_find);
+//        log();
+//        log();
+//    }
+//    log((int)sizeof(short));

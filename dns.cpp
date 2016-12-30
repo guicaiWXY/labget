@@ -254,7 +254,7 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
     _word = (short) 0x0001;
     PUT_2
 
-    show_buffer(send_buffer);
+//    show_buffer(send_buffer);
 
     /*
      * No other part for DNS queries
@@ -271,7 +271,7 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
     len = recvfrom(s, rec_buffer, BUFFER_SIZE, 0, (struct sockaddr *) &addr, (socklen_t *) &addr_len);
     close(s);
 
-    show_buffer1(rec_buffer);
+//    show_buffer1(rec_buffer);
 
     if (recursive && DNS_RECUR_SUP) {
         log("Recursive query not supported.\n");
@@ -283,30 +283,35 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
 
     // Check Transaction ID & Response Code
     if (GET_WORD(0) == (short) tmp_id) {
-        log("Transaction id ");
-        log_hex(tmp_id);
-        log("Matched");
+//        log("Transaction id ");
+//        log_hex(tmp_id);
+//        log("Matched");
     } else {
         log("Query id is ");
         log_hex((short) tmp_id);
         log(" , While Response id is ");
         log_hex(*(short *) rec_buffer);
+        log();
+        return 0;
     }
-    log();
+//    log();
     int questions;
     int answers;
     int authorities;
     int additional;
-    log("Question : ");
     questions = GET_QUESTIONS;
-    log(questions);
-    log(" Answers : ");
-    log((answers = GET_ANSWERS));
-    log(" Authority RRs : ");
-    log((authorities = GET_AUTHs));
-    log(" Additional RRs : ");
-    log((additional = GET_ADDS));
-    log();
+    answers = GET_ANSWERS;
+    authorities = GET_AUTHs;
+    additional = GET_ADDS;
+//    log("Question : ");
+//    log(questions);
+//    log(" Answers : ");
+//    log(answers);
+//    log(" Authority RRs : ");
+//    log(authorities);
+//    log(" Additional RRs : ");
+//    log(additional);
+//    log();
 
     // for example
     // www.zhihu.com 's length is 3+1+5+1+3   = 13B
@@ -350,9 +355,9 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
 //                get_int_from_buffer(&data, &ipv4_addr_ptr)
 
 //                        return ipv4_addr_ptr;
-                    log("Find an A-type record, ip addr is ");
-                    log(ipv4_addr_ptr);
-                    log();
+//                    log("Find an A-type record, ip addr is ");
+//                    log(ipv4_addr_ptr);
+//                    log();
                     break;
 
                 case 0x05:
@@ -376,6 +381,10 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
     return &ipv4_addr_ptr;
 }
 
+/*
+ * this function create 2 threads to generate DNS request simultaneously
+ * when getting an address, it sets a mutex to be the ip version
+ */
 int *dns_look_up_v6(std::string auth, int port) {
     using namespace std;
 

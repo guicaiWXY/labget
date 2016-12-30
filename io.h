@@ -10,6 +10,8 @@
 void log(std::string);
 void log(char * );
 void log(int x);
+void log(long x);
+void log(unsigned long x);
 void log(void);
 void out(std::string);
 void out(char *s);
