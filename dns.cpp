@@ -129,14 +129,7 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
 
     char _byte;
     short _word;
-//    int _2words;
-
     char *s_b = send_buffer;
-
-
-    /*
-     * DNS Message Format
-     * */
 
 //                     Message Format
 //                                    1  1  1  1  1  1
@@ -166,14 +159,12 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
     int tmp_id = random_transaction_id;
     _word = (short) random_transaction_id;
     PUT_2
-//    show_buffer(send_buffer);
 
     // BYTE 3
     // Flag 1st half
     // 0 0000 0 0 1
     _byte = recursive ? (char) 0x01 : (char) 0x00;
     PUT_1
-//    show_buffer(send_buffer);
 
     // BYTE 4
     // Flag 2nd half
@@ -199,9 +190,6 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
     // Additional Answer Numbers
     _word = (short) 0x00;
     PUT_2
-//    show_buffer(send_buffer);
-
-
 
 //                Question Section Format
 //                                    1  1  1  1  1  1
@@ -270,8 +258,6 @@ int *dns_look_up(std::string auth, int port, bool recursive) {
      * */
     len = recvfrom(s, rec_buffer, BUFFER_SIZE, 0, (struct sockaddr *) &addr, (socklen_t *) &addr_len);
     close(s);
-
-//    show_buffer1(rec_buffer);
 
     if (recursive && DNS_RECUR_SUP) {
         log("Recursive query not supported.\n");

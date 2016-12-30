@@ -49,6 +49,30 @@ void split_string(const std::string &s, std::vector<std::string> &v, const std::
         v.push_back(s.substr(pos1));
 }
 
+// timeout is in ms
+int set_socket_time_out(int sockfd, long timeout) {
+    struct timeval timeo;
+    socklen_t len = sizeof(timeo);
+    timeo.tv_sec = timeout/1000;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeo, len) == -1) {
+        log("set socket connection time out error.\n");
+        return -1;
+    }
+    return 0;
+}
+int set_socket_time_out1(int sockfd, long timeout) {
+    struct timeval timeo;
+    socklen_t len = sizeof(timeo);
+    timeo.tv_sec = timeout/1000;
+    timeo.tv_usec = timeout % 1000;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeo, len) < 0) {
+        log("set socket receive time out error.\n");
+        return -1;
+    }
+    return 0;
+}
 /*
  * Return header and content content user required
  * */
@@ -70,6 +94,9 @@ RESPONSE send_request(std::string host, std::string request, int *ip_and_port, i
             log("Error when establishing TCP connection.\n");
             return NULL;
         }
+        // set connection timeout 2000ms
+        if ( set_socket_time_out(sockfd, 2000) )
+            return NULL;
 
         /* build the server's Internet address with given address */
         bzero(&server_addr, sizeof(sockaddr_in));
@@ -79,7 +106,11 @@ RESPONSE send_request(std::string host, std::string request, int *ip_and_port, i
 
         /* connect  */
         if (connect(sockfd, (sockaddr *) &server_addr, sizeof(struct sockaddr_in)) < 0) {
-            log("TCP connection failed.\n");
+            if (errno == EINPROGRESS) {
+                log("connection timeout.\n");
+            }else {
+                log("TCP connection failed.\n");
+            }
             return NULL;
         }
         bzero(send_buf, BUFFER_SIZE);
@@ -110,6 +141,9 @@ RESPONSE send_request(std::string host, std::string request, int *ip_and_port, i
         /*
          * Read response
          * */
+        if (set_socket_time_out1(sockfd, 1000))
+            return NULL;
+
         unsigned long sum = 0;
         char head_buf[BUFFER_SIZE];
         n = read(sockfd, head_buf, BUFFER_SIZE);
@@ -223,6 +257,7 @@ int get_hex(char *start, char *ret) {
     }
     return sum;
 }
+
 int get_status_code(RESPONSE response, std::vector<std::string> &lines) {
     char *header = response->header.buffer;
     header[response->header.size] = 0;
@@ -289,8 +324,6 @@ void decompress(SIZED_BUF &entity, std::vector<std::string> lines) {
             char * tmp_index;
             char * start_index = entity.buffer;
             while (true) {
-                // STL tool func: find an array of bytes equal
-//                tmp_index = std::find(entity.buffer, ret, 2);
                 std::string origin = std::string(start_index);
                 int index = origin.find(ret);
                 tmp_index = start_index + index;
