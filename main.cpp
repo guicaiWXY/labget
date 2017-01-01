@@ -21,25 +21,59 @@ void test_uri() {
     status = curl("http://xiami.com");
 }
 
+std::string new_uri(std::vector<std::string> lines) {
+    int i = 0;
+    int len = lines.size();
+    std::string location = "Location: ";
+    for (; i < len - 1; i++) {
+        if (lines[i].find(location) == 0) {
+            return lines[i].substr(location.length());
+        }
+    }
+    return "";
+}
 
-
-//void test() {
-//    std::string s("this subject has a submarine as a subsequence");
-//    std::smatch m;
-//    std::regex e("\\b(sub)([^ ]*)");   // matches words beginning by "sub"
-//
-//    std::cout << "Target sequence: " << s << std::endl;
-//    std::cout << "Regular expression: /\\b(sub)([^ ]*)/" << std::endl;
-//    std::cout << "The following matches and submatches were found:" << std::endl;
-//
-//    while (std::regex_search(s, m, e)) {
-//        for (auto x = m.begin(); x != m.end(); x++)
-//            std::cout << x->str() << " ";
-//        out(m.begin()->str());
-//        std::cout << "--> ([^ ]*) match " << m.format("$2") << std::endl;
-//        s = m.suffix().str();
-//    }
-//}
+void log_ip(int *_addr) {
+    int addr = _addr[0];
+    fprintf(stderr, "%d.", (unsigned char)addr & 0xff);
+    fprintf(stderr, "%d.", (unsigned char)(addr >> 8)&0xff);
+    fprintf(stderr, "%d.", (unsigned char)(addr >> 16)&0xff);
+    fprintf(stderr, "%d", (unsigned char)(addr >> 24)&0xff);
+    log();
+}
+void log_ip2(unsigned char*addr_ptr) {
+    unsigned short x = addr_ptr[0] + (addr_ptr[1] << 8);
+    if (x != 0)
+        fprintf(stderr, "%04x", x);
+}
+void log_ip1(int *addr_ptr) {
+    if (addr_ptr[0] == 4) {
+        log_ip(addr_ptr + 1);
+    } else {
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[15]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[14]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[13]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[12]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[11]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[10]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[9]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[8]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[7]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[6]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[5]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[4]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[3]);
+//        fprintf(stderr, "%02x:", ((unsigned char *)addr_ptr)[2]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[1]);
+//        fprintf(stderr, "%02x", ((unsigned char *)addr_ptr)[0]);
+        for (int i = 0; i < 7; i++) {
+            log_ip2((unsigned char*)(addr_ptr + 2*i));
+            log(":");
+        }
+        log_ip2((unsigned char*)(addr_ptr + 2*7));
+        log();
+    }
+}
 
 int curl(const char *uri) {
     /*
@@ -64,35 +98,58 @@ int curl(const char *uri) {
     /*
      * Step 2: DNS transfer
      * */
-    int *ip_addr ;
+    int *ip_addr;
     if (using_ipv6) {
-        ip_addr = dns_look_up_v6(segments[1], port);
-        if (ip_addr == 0) {
-            log("DNS transfer fails.");
-            log();
-        }
-    } else {
-        ip_addr = dns_look_up(segments[1], port);
+        ip_addr = dns_look_up_v6(segments[1]);
         if (ip_addr == 0) {
             log("DNS transfer fails.");
             log();
             return -1;
+        } else {
+            log_ip1(ip_addr);
+        }
+    } else {
+        ip_addr = dns_look_up(segments[1]);
+        if (ip_addr == 0) {
+            log("DNS transfer fails.");
+            log();
+            return -1;
+        } else {
+            log_ip(ip_addr);
         }
     }
 
     /*
      * Step 3: Send HTTP request
      * */
-    int ip_port[2];
-    ip_port[0] = *ip_addr;
-    ip_port[1] = port;
     RESPONSE response;
-
-    if (using_TLS) {
-
-    } else {
+    if (!using_ipv6) {
+        int ip_port[2];
+        ip_port[0] = ip_addr[0];
+        ip_port[1] = port;
         response = send_request(segments[1], segments[2], ip_port, IPV4);
+    } else if (ip_addr[0] == 4) {
+
+        int ip_port[2];
+        ip_port[0] = ip_addr[1];
+        ip_port[1] = port;
+        if (using_TLS) {
+
+        } else {
+            response = send_request(segments[1], segments[2], ip_port, IPV4);
+        }
+    } else if (ip_addr[0] == 6) {
+        int ip_port[5];
+        memcpy(ip_port, ip_addr, 16);
+        ip_port[4] = port;
+        if (using_TLS) {
+
+        } else {
+            // TODO
+            response = send_request(segments[1], segments[2], ip_port, IPV6);
+        }
     }
+
     if (response == NULL) {
         log("Get HTTP response error.\n");
         return -1;
@@ -102,34 +159,47 @@ int curl(const char *uri) {
      * Step 4: parsing response
      * */
     std::vector<std::string> lines;
-    int status = get_status_code(response, lines );
+    int status = get_status_code(response, lines);
     if (status < 0) {
         log("Wrong status code: ");
         log(status);
         log();
         return -1;
     }
+    std::string uri_new;
+    bool ok = false;
     switch (status) {
         // 2xx ok
         case 200:
             // OK
             decompress(response->content, lines);
+            if (response->content.size > 0)
+                ok = true;
             break;
-        // 3xx redirect
+            // 3xx redirect
         case 301:
             // moved permanently
-            break;
+            uri_new = new_uri(lines);
+            if (uri_new.compare(""))
+                curl(uri_new.c_str());
+            exit(0);
+//            break;
         case 302:
             // moved temporarily
-            break;
-        // 4xx client error
+            uri_new = new_uri(lines);
+            uri_new = segments[0] + "://" + segments[1] + "/" + uri_new;
+            curl(uri_new.c_str());
+            exit(0);
+//            break;
+            // 4xx client error
         case 400:
             // bad request
             break;
         case 404:
             //
+            exit(0);
             break;
-        // 5xx server error
+            // 5xx server error
         case 500:
             //
             break;
@@ -143,7 +213,8 @@ int curl(const char *uri) {
     /*
      * Step 5: Show response
      * */
-    show_content(response->content.buffer, response->content.size);
+    if (ok)
+        show_content(response->content.buffer, response->content.size);
 
     /*
      * clean up stage
@@ -158,51 +229,13 @@ int main(int argc, char **args) {
 //    test_uri();
 //    exit(0);
 
-
     if (argc != 2) {
         std::cout << "Please include a desired url." << std::endl;
     }
 
-    /*
-     * Some test code
-     * */
-//    string auth = "www.zhihu.com.cn";
-
-//    char *rec_buffer = (char *)malloc(sizeof(char) * 10);
-//    rec_buffer[4] = 0x01;
-//    rec_buffer[5] = 0x02;
-//
-//#define GET(position) (((int)rec_buffer[position] << 8) + (int)(rec_buffer[position+1]))
-//    // <<'s priority is lower than +  0.0
-//    int tmp =((rec_buffer[4])) << 8 + (rec_buffer[4+1]);
-//    int d0 = rec_buffer[4];
-//    int debug = rec_buffer[5];
-//    int tmp2 = GET(4);
-//    log(tmp2);
-////    GET_WORD(4);
-//    log(tmp);
-
     using_TLS = false;
     using_ipv6 = false;
-//    unsigned int *ipv4_addr_ptr;
-////    ipv4_addr_ptr = dns_look_up("zhihu.com", 80);
-////    print_v4_addr(ipv4_addr_ptr);
-//    int ip_port[5];
-////    ip_port[0] = *ipv4_addr_ptr;
-//    ip_port[1] = 80;
-////    send_request("zhihu.com", "/index.html", ip_port, IPV4);
-//
-////    ipv4_addr_ptr = (unsigned int*)dns_look_up("www.sjtu.edu.cn", 80);
-////    unsigned int addr = -285162887;
-//    unsigned int addr = 1996650698;
-//
-////    print_v4_addr(&addr);
-////    print_v4_addr(ipv4_addr_ptr);
-////    ip_port[0] = *ipv4_addr_ptr;
-//    ip_port[0] = addr;
-////    send_request("www.sina.com.cn", "/", ip_port, IPV4);
-//    send_request("www.sjtu.edu.cn", "/", ip_port, IPV4);
-
+    using_ipv6 = true;
 
     if (curl(args[1]) == -1) {
         exit(0);

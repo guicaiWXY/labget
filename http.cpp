@@ -4,7 +4,33 @@
 #include <strings.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <netinet/in.h>
+#include <asm/ioctls.h>
+#include <sys/ioctl.h>
 #include "http.h"
+
+int timeout = 0;
+
+std::string convert_port_to_string(unsigned int port) {
+    char tmp1[7];
+    char tmp2[7];
+    unsigned int suffix = port;
+    int sum = 0;
+    for (int i = 0; i < 6; i++) {
+        if (suffix > 0) {
+            tmp1[i] = '0' + suffix % 10;
+            suffix = suffix / 10;
+        } else {
+            sum = i;
+            break;
+        }
+    }
+    for (int i = 0; i < sum; i++) {
+        tmp2[i] = tmp1[sum - 1 - i];
+    }
+    tmp2[sum] = 0;
+    return std::string(tmp2);
+}
 
 void show_content(char *recv, unsigned long len) {
     for (unsigned long i = 0; i < len; i++) {
@@ -50,29 +76,31 @@ void split_string(const std::string &s, std::vector<std::string> &v, const std::
 }
 
 // timeout is in ms
-int set_socket_time_out(int sockfd, long timeout) {
-    struct timeval timeo;
-    socklen_t len = sizeof(timeo);
-    timeo.tv_sec = timeout/1000;
+//int set_socket_time_out(int sockfd, long timeout) {
+//    struct timeval timeo;
+//    socklen_t len = sizeof(timeo);
+//    timeo.tv_sec = timeout / 1000;
+//
+//    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeo, len) == -1) {
+//        log("set socket connection time out error.\n");
+//        return -1;
+//    }
+//    return 0;
+//}
 
-    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeo, len) == -1) {
-        log("set socket connection time out error.\n");
-        return -1;
-    }
-    return 0;
-}
-int set_socket_time_out1(int sockfd, long timeout) {
-    struct timeval timeo;
-    socklen_t len = sizeof(timeo);
-    timeo.tv_sec = timeout/1000;
-    timeo.tv_usec = timeout % 1000;
+//int set_socket_time_out1(int sockfd, long timeout) {
+//    struct timeval timeo;
+//    socklen_t len = sizeof(timeo);
+//    timeo.tv_sec = timeout / 1000;
+//    timeo.tv_usec = timeout % 1000;
+//
+//    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeo, len) < 0) {
+//        log("set socket receive time out error.\n");
+//        return -1;
+//    }
+//    return 0;
+//}
 
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeo, len) < 0) {
-        log("set socket receive time out error.\n");
-        return -1;
-    }
-    return 0;
-}
 /*
  * Return header and content content user required
  * */
@@ -80,145 +108,230 @@ RESPONSE send_request(std::string host, std::string request, int *ip_and_port, i
     int sockfd;
     unsigned int portno, n;
     portno = version == IPV4 ? ip_and_port[1] : ip_and_port[4];
+    log((int) portno);
     struct sockaddr_in server_addr;
-    struct sockaddr_in client_addr;
-    struct hostent *server;
-    const char *hostname = host.c_str();
+    struct sockaddr_in6 server_addr_6;
+
     char *recv_buf = (char *) malloc(sizeof(char) * RECV_BUFFER_SIZE);
     char send_buf[BUFFER_SIZE];
 
     // TCP
     if (version == IPV4) {
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) {
-            log("Error when establishing TCP connection.\n");
-            return NULL;
-        }
-        // set connection timeout 2000ms
-        if ( set_socket_time_out(sockfd, 2000) )
-            return NULL;
+    } else {
+        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+    }
+    if (sockfd < 0) {
+        log("Error when establishing TCP connection.\n");
+        return NULL;
+    }
+    // set connection timeout 2000ms
+//    set_socket_time_out(sockfd, 1000);
 
-        /* build the server's Internet address with given address */
+    /* build the server's Internet address with given address */
+    if (version == IPV4) {
         bzero(&server_addr, sizeof(sockaddr_in));
         server_addr.sin_family = AF_INET;
         server_addr.sin_addr.s_addr = ip_and_port[0];       // already converted to net byte order (little endian)
         server_addr.sin_port = htons(portno);
+    } else {
+        bzero(&server_addr_6, sizeof(sockaddr_in6));
+        server_addr_6.sin6_family = AF_INET6;
+//        server_addr_6.sin6_addr.__in6_u.__u6_addr32[0] = ip_and_port
+        memcpy(&server_addr_6.sin6_addr.__in6_u, ip_and_port, sizeof(int) * 4);
+        server_addr_6.sin6_port = htons(portno);
+    }
 
-        /* connect  */
+//    struct fd_set fds;
+//    FILE *fp;
+//    struct timeval timeout = {1,0};
+    unsigned long ul = 3;
+    int rm = ioctl(sockfd, FIONBIO, &ul);
+    if (rm == -1) {
+        close(sockfd);
+        return NULL;
+    }
+
+
+    /* connect  */
+    if (version == IPV4) {
         if (connect(sockfd, (sockaddr *) &server_addr, sizeof(struct sockaddr_in)) < 0) {
             if (errno == EINPROGRESS) {
                 log("connection timeout.\n");
-            }else {
+//                exit(0);
+            } else {
                 log("TCP connection failed.\n");
+                exit(0);
             }
+//            return NULL;
+        }
+    } else {
+        if (connect(sockfd, (sockaddr *) &server_addr_6, sizeof(server_addr_6)) < 0) {
+            if (errno == EINPROGRESS) {
+                log("connection timeout.\n");
+            } else
+                log("TCP connection failed.\n");
             return NULL;
         }
-        bzero(send_buf, BUFFER_SIZE);
-        std::string head;
-        if (request.find("/") == 0)
-            head = "GET " + request + " HTTP/1.1\r\n";
-        else
-            head = "GET /" + request + " HTTP/1.1\r\n";
-        // need to print header line
-        log(head);
+    }
 
-        head += "Host: " + host + "\r\n";
-        head += "Connection: keep-alive\r\n";
-        head += "Upgrade-Insecure-Requests: 1\r\n";
-        head += "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36\r\n";
-        head += "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n";
-        head += "Accept-Encoding: gzip\r\n"; //, deflate, sdch, br
-        head += "\r\n";
+    struct timeval timeout;
+    fd_set r;
+    FD_ZERO(&r);
+    FD_SET(sockfd, &r);
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    int retval = select(sockfd + 1, NULL, &r, NULL, &timeout);
+    if (retval == -1) {
+        return NULL;
+    } else if (retval == 0) {
+        //time out
+        return NULL;
+    }
+    // 1s after
 
-        fill_buffer(send_buf, head);
+    bzero(send_buf, BUFFER_SIZE);
+    std::string head;
+    if (request.find("/") == 0)
+        head = "GET " + request + " HTTP/1.1\r\n";
+    else
+        head = "GET /" + request + " HTTP/1.1\r\n";
+    // need to print header line
 
-        n = write(sockfd, send_buf, head.length());
-        if (n < 0) {
-            log("Error when sending http request.\n");
+    head += "Host: " + host + ":";
+    std::string _p = convert_port_to_string(portno);
+    head += _p;
+    head += "\r\n";
+    head += "Connection: keep-alive\r\n";
+    head += "Upgrade-Insecure-Requests: 1\r\n";
+    head += "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36\r\n";
+    head += "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n";
+    head += "Accept-Encoding: gzip\r\n"; //, deflate, sdch, br
+    head += "\r\n";
+
+    log(head);
+
+    fill_buffer(send_buf, head);
+
+    n = write(sockfd, send_buf, head.length());
+    if (n < 0) {
+        log("Error when sending http request.\n");
+        return NULL;
+    }
+
+    /*
+     * Read response
+     * */
+//    set_socket_time_out1(sockfd, 1000);
+
+    unsigned long ul1 = 0;
+    rm = ioctl(sockfd, FIONBIO, &ul1);
+    if (rm == -1) {
+        close(sockfd);
+        return NULL;
+    }
+
+    unsigned long sum = 0;
+    char head_buf[BUFFER_SIZE];
+    n = recv(sockfd, head_buf, BUFFER_SIZE, 0);
+    if (n == 0 - 1 | n == 0) {
+        log("Empty Head.\n");
+        return NULL;
+    }
+    char *x = "\r\n\r\n";
+    head_buf[n] = 0;
+    int length_;
+    std::string headers = std::string(head_buf);
+    std::string length = "Content-Length: ";
+    int index__;
+    if ((index__ = headers.find(length)) > 0) {
+        std::string x = headers.substr(index__ + length.length());
+        int ind = x.find("\r\n");
+        length_ = atoi(x.substr(0, ind).c_str());
+        log(length_);
+
+    }
+
+    unsigned long tmp;
+    sum = 0;
+    bzero(recv_buf, RECV_BUFFER_SIZE);
+
+    int index = headers.find(x);
+    if (n == index + 4) {
+    } else {
+        // move abundant bytes
+        char *_x = head_buf + index;
+        memcpy(recv_buf, _x + 4, head_buf + n - _x - 4);
+        sum = head_buf + n - _x - 4;
+        n = _x + 4 - head_buf;
+    }
+
+    show_buffer(head_buf, n);
+
+
+    while (true) {
+        unsigned long ul_ = 0;
+        rm = ioctl(sockfd, FIONBIO, &ul_);
+        if (rm == -1) {
+            close(sockfd);
             return NULL;
         }
 
-        /*
-         * Read response
-         * */
-        if (set_socket_time_out1(sockfd, 1000))
+        struct timeval timeout;
+        fd_set r;
+        FD_ZERO(&r);
+        FD_SET(sockfd, &r);
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+
+        int retval = select(sockfd + 1, NULL, &r, NULL, &timeout);
+        if (retval == -1) {
+            log("Error");
             return NULL;
-
-        unsigned long sum = 0;
-        char head_buf[BUFFER_SIZE];
-        n = read(sockfd, head_buf, BUFFER_SIZE);
-        if (n == 0 - 1 | n == 0) {
-            log("Empty Head.\n");
-            return NULL;
+        } else if (retval == 0) {
+            //time out
+            log("time out.");
+            break;
         }
-        char *x = "\r\n\r\n";
-        head_buf[n] = 0;
-        std::string headers = std::string(head_buf);
+        tmp = recv(sockfd, recv_buf + sum, RECV_BUFFER_SIZE, 0);
+        if (tmp == 0 | tmp == 0 - 1)
+            break;
 
-        unsigned long tmp;
-        sum = 0;
-        bzero(recv_buf, RECV_BUFFER_SIZE);
-
-//        char * _x = std::find(head_buf, x, 4);
-        int index = headers.find(x);
-        if ( n == index + 4) {
-            // ok
-        } else {
-            // move abundant bytes
-            char * _x = head_buf + index;
-            memcpy(recv_buf, _x + 4, head_buf + n - _x - 4);
-            sum = head_buf + n - _x - 4;
-            n = _x + 4 - head_buf;
-        }
-
-//        show_buffer(head_buf, n);
-
-        while (true) {
-            tmp = read(sockfd, recv_buf + sum, RECV_BUFFER_SIZE);
-            if (tmp == 0 | tmp == 0 - 1)
-                break;
-            log(tmp);
-            log();
-//            show_buffer(recv_buf + sum, tmp);
-
-            sum += tmp;
-            if (sum > RECV_BUFFER_SIZE) {
-                log("Buffer Overflow.");
-                break;
-            }
-            std::string segment = std::string(recv_buf + sum - tmp);
-            int in = segment.find("</html>");
-            if (segment.size() > 15 & in > (int) (segment.size() - 15)) {
-                break;
-            }
-        }
-        if (sum == 0 | sum == 0 - 1) {
-            log("Empty Content.\n");
-            return NULL;
+        sum += tmp;
+        if (sum == length_)
+            break;
+        if (sum > RECV_BUFFER_SIZE) {
+            log("Buffer Overflow.");
+            break;
         }
         log(sum);
         log();
+        if (length_ == 0)
+            break;
+    }
+    if (sum == 0 | sum == 0 - 1) {
+        log("Empty Content.\n");
+        return NULL;
+    }
+//    log(sum);
+//    log();
 
 //        show_content(recv_buf, sum);
 
-        // fill return data
-        SIZED_BUF response_header = {
-                head_buf, n
-        };
-        SIZED_BUF response_content = {
-                recv_buf, sum
-        };
+    // fill return data
+    SIZED_BUF response_header = {
+            head_buf, n
+    };
+    SIZED_BUF response_content = {
+            recv_buf, sum
+    };
 
-        RESPONSE response = (RESPONSE) malloc(sizeof(struct response));
-        response->header = response_header;
-        response->content = response_content;
+    RESPONSE response = (RESPONSE) malloc(sizeof(struct response));
+    response->header = response_header;
+    response->content = response_content;
 
-        close(sockfd);
-        return response;
-    } else {
-        // IPV6
-
-    }
+    close(sockfd);
+    return response;
 }
 
 RESPONSE send_request_tls(std::string host, std::string request, int *ip_and_port, int version) {
@@ -235,10 +348,10 @@ void show_header(std::vector<std::string> lines) {
 //    log();
 //    log("Headers are:\n");
 
-//    int end = lines.size()-1;
-//    for (int i=1; i < end; i++) {
-//        log(lines[i] + "\n");
-//    }
+    int end = lines.size() - 1;
+    for (int i = 1; i < end; i++) {
+        log(lines[i] + "\n");
+    }
 }
 
 int get_port(std::string);  // in uri.cpp
@@ -250,7 +363,7 @@ int get_hex(char *start, char *ret) {
     for (int i = 0; i < len; i++) {
         char x = start[i];
         if (x <= 0x3a)
-            tmp = x-'0';
+            tmp = x - '0';
         else
             tmp = (x - 'a') + 10;
         sum = sum * 16 + tmp;
@@ -263,9 +376,8 @@ int get_status_code(RESPONSE response, std::vector<std::string> &lines) {
     header[response->header.size] = 0;
     std::string head = std::string(header);
     split_string(head, lines, "\r\n");
-//    log(lines.at(lines.size()-1));
 
-    show_header(lines);
+//    show_header(lines);
 
     std::vector<std::string> codes;
     split_string(lines[0], codes, " ");
@@ -283,8 +395,10 @@ void decompress(SIZED_BUF &entity, std::vector<std::string> lines) {
     int len = lines.size();
     std::string enc = "Content-Encoding: ";
     std::string tran = "Transfer-Encoding: ";
+    std::string leng = "Content-Length: ";
     int index = -1;
     int index1 = -1;
+    int length = -1;
     // get response encoding
     for (int i = 1; i < len - 1; i++) {
         if (lines[i].find(enc, 0) == 0) {
@@ -301,9 +415,17 @@ void decompress(SIZED_BUF &entity, std::vector<std::string> lines) {
             }
             if (index >= 0)
                 break;
+        } else if (lines[i].find(leng) == 0) {
+            length = get_port(lines[i].substr(leng.length()));
         }
     }
 
+    if (length > 0) {
+        if (length != entity.size) {
+            log("Wrong entity length");
+            exit(0);
+        }
+    }
     if (gziped) {
         // encoding with gzip
         Byte *buf = (Byte *) malloc(sizeof(char) * RECV_SIZE * 16);
@@ -317,12 +439,13 @@ void decompress(SIZED_BUF &entity, std::vector<std::string> lines) {
                 entity.size = (long) size;
             } else {
                 log("GZ decompress failed.\n");
+                exit(0);
             }
         } else {
             unsigned long sum = 0;
-            char * ret = "\r\n";
-            char * tmp_index;
-            char * start_index = entity.buffer;
+            char *ret = "\r\n";
+            char *tmp_index;
+            char *start_index = entity.buffer;
             while (true) {
                 std::string origin = std::string(start_index);
                 int index = origin.find(ret);
@@ -337,7 +460,7 @@ void decompress(SIZED_BUF &entity, std::vector<std::string> lines) {
                 if (s == 0)
                     break;
                 else {
-                    if (gzdecompress((Byte*)start_index, s, buf + sum, &size) == 0) {
+                    if (gzdecompress((Byte *) start_index, s, buf + sum, &size) == 0) {
                         start_index += s + 2;   // \r\n for chunk end
                         sum += size;
                     } else {
